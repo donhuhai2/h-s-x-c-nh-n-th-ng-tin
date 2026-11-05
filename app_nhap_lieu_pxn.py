@@ -172,10 +172,7 @@ def extract_lab_data_from_image(image_bytes, api_key, mode="patient"):
         }
         """
 
-    fallback_models = ["gemini-2.5-flash",
-    "gemini-2.0-flash",
-    "gemini-1.5-flash-latest"
-                      ]
+    fallback_models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
     last_error = None
     for model_name in fallback_models:
         try:
