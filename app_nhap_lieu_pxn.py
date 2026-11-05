@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
 """
 Web App Nhập liệu thẩm định LIS & Xuất báo cáo Word / Excel.
-Cập nhật mới nhất:
- 1. Tự động lưu và nhớ Gemini API Key vào file cấu hình (không phải nhập lại mỗi khi mở lại trang).
- 2. Ẩn hoàn toàn ô PIN khỏi Sidebar (mã PIN được khóa bí mật ngầm trong hệ thống).
- 3. Bảo vệ thao tác xóa Excel bằng MÃ PIN bảo mật.
- 4. Đa dạng nguồn ảnh (Tải lên, Chụp trực tiếp bằng Camera, Link Google Drive) và liên kết Google Drive.
- 5. Xuất báo cáo linh hoạt: 1 ngày xuất riêng lẻ (Word/PDF), >= 2 ngày hoặc toàn bộ đóng gói ZIP (Word/PDF).
+Đã sửa lỗi StreamlitSecretNotFoundError và hoàn thiện tất cả chức năng:
+ - Lưu và ghi nhớ API Key an toàn
+ - Ẩn mã PIN bảo mật ngầm
+ - Nạp ảnh (Upload / Camera / Link Google Drive)
+ - Xuất Word/PDF đơn lẻ hoặc đóng gói ZIP
 """
 
 import os
@@ -45,7 +44,7 @@ def clean_filename(filename):
     return re.sub(r'[\\/*?:"<>|]', "", str(filename)).strip()
 
 def load_saved_api_key():
-    """Đọc API Key đã lưu từ file cấu hình hoặc Streamlit secrets."""
+    """Đọc API Key đã lưu an toàn mà không gây lỗi SecretNotFound."""
     if os.path.exists(API_KEY_FILE):
         try:
             with open(API_KEY_FILE, "r", encoding="utf-8") as f:
@@ -54,8 +53,11 @@ def load_saved_api_key():
                     return saved
         except Exception:
             pass
-    if "GEMINI_API_KEY" in st.secrets:
-        return st.secrets["GEMINI_API_KEY"]
+    try:
+        if "GEMINI_API_KEY" in st.secrets:
+            return st.secrets["GEMINI_API_KEY"]
+    except Exception:
+        pass
     return ""
 
 def save_api_key_to_file(key_val):
@@ -454,7 +456,7 @@ with tabs[1]:
                 default_btck_idx = 0 if st.session_state[f"btck_{i}"] == "Có" else 1
                 bt_data[f"XN_BAT_THUONG_CO_KHONG_{i}"] = st.selectbox(f"Đánh dấu nhận biết?", ["Có", "Không"], index=default_btck_idx, key=f"form_btck_{i}")
                 default_btkl_idx = 0 if st.session_state[f"btkl_{i}"] == "Đạt" else 1
-                bt_data[f"KET_LUAN_XN_BAT_THUONG_{i}"] = st.selectbox(f"Kết luận BĐ {i}", ["Đạt", "Không đạt"], index=default_btck_idx, key=f"form_btkl_{i}")
+                bt_data[f"KET_LUAN_XN_BAT_THUONG_{i}"] = st.selectbox(f"Kết luận BĐ {i}", ["Đạt", "Không đạt"], index=default_btkl_idx, key=f"form_btkl_{i}")
 
         st.markdown("---")
         st.subheader("4. Thẩm định xét nghiệm CHỈNH SỬA & KHUYẾN CÁO")
