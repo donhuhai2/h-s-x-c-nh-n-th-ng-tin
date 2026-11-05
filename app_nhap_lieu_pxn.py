@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 """
 Web App Nhập liệu thẩm định LIS & Xuất báo cáo Word / Excel.
-Đã sửa lỗi StreamlitSecretNotFoundError và hoàn thiện tất cả chức năng:
- - Lưu và ghi nhớ API Key an toàn
- - Ẩn mã PIN bảo mật ngầm
- - Nạp ảnh (Upload / Camera / Link Google Drive)
+Đã sửa triệt để lỗi 404 Model Not Found và 503 Service Unavailable:
+ - Tự động retry khi model bận
+ - Danh sách model Vision thế hệ mới: gemini-3.8-flash, gemini-3.8-flash-lite, gemini-2.5-pro
+ - Tự động lưu & ghi nhớ API Key an toàn
+ - Bảo mật mã PIN quản trị
  - Xuất Word/PDF đơn lẻ hoặc đóng gói ZIP
 """
 
@@ -16,6 +17,7 @@ import zipfile
 import subprocess
 import tempfile
 import urllib.request
+import time
 from datetime import date
 import pandas as pd
 import streamlit as st
@@ -32,7 +34,7 @@ except ImportError:
 EXCEL_FILE = "danh_sach_phieu.xlsx"
 TEMPLATE_FILE = "template.docx"
 API_KEY_FILE = "api_key_config.txt"
-ADMIN_SECURITY_PIN = "175175"  # Mã PIN quản trị xóa dữ liệu
+ADMIN_SECURITY_PIN = "175175"
 
 st.set_page_config(
     page_title="Nhập liệu & Thẩm định PXN - AI Vision",
@@ -44,7 +46,6 @@ def clean_filename(filename):
     return re.sub(r'[\\/*?:"<>|]', "", str(filename)).strip()
 
 def load_saved_api_key():
-    """Đọc API Key đã lưu an toàn mà không gây lỗi SecretNotFound."""
     if os.path.exists(API_KEY_FILE):
         try:
             with open(API_KEY_FILE, "r", encoding="utf-8") as f:
@@ -61,7 +62,6 @@ def load_saved_api_key():
     return ""
 
 def save_api_key_to_file(key_val):
-    """Lưu API Key vào file cấu hình."""
     try:
         with open(API_KEY_FILE, "w", encoding="utf-8") as f:
             f.write(str(key_val).strip())
@@ -125,10 +125,10 @@ def convert_docx_to_pdf_bytes(docx_bytes):
 def get_bytes_from_gdrive_url(url):
     match = re.search(r'(?:/file/d/|id=)([a-zA-Z0-9_-]+)', url)
     if not match:
-        raise ValueError("Đường dẫn Google Drive không hợp lệ! Vui lòng đảm bảo link có dạng: https://drive.google.com/file/d/.../view")
+        raise ValueError("Đường dẫn Google Drive không hợp lệ! Vui lòng đảm bảo link có dạng: [https://drive.google.com/file/d/.../view](https://drive.google.com/file/d/.../view)")
     
     file_id = match.group(1)
-    direct_url = f"https://drive.google.com/uc?export=download&id={file_id}"
+    direct_url = f"[https://drive.google.com/uc?export=download&id=](https://drive.google.com/uc?export=download&id=){file_id}"
     req = urllib.request.Request(direct_url, headers={'User-Agent': 'Mozilla/5.0'})
     with urllib.request.urlopen(req) as resp:
         return resp.read()
@@ -192,25 +192,32 @@ def extract_lab_data_from_image(image_bytes, api_key, mode="patient"):
         }
         """
 
-    fallback_models = ["gemini-3.8-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+    candidate_models = ["gemini-3.8-flash", "gemini-3.8-flash-lite", "gemini-2.5-pro"]
     last_error = None
-    for model_name in fallback_models:
-        try:
-            response = client.models.generate_content(
-                model=model_name,
-                contents=[
-                    types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"),
-                    prompt
-                ]
-            )
-            raw_text = response.text.strip()
-            raw_text = re.sub(r"^```json\s*", "", raw_text)
-            raw_text = re.sub(r"^```\s*", "", raw_text)
-            raw_text = re.sub(r"```$", "", raw_text).strip()
-            return json.loads(raw_text)
-        except Exception as e:
-            last_error = e
-            continue
+    
+    for model_name in candidate_models:
+        for attempt in range(2):
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=[
+                        types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"),
+                        prompt
+                    ]
+                )
+                raw_text = response.text.strip()
+                raw_text = re.sub(r"^```json\s*", "", raw_text)
+                raw_text = re.sub(r"^```\s*", "", raw_text)
+                raw_text = re.sub(r"```$", "", raw_text).strip()
+                return json.loads(raw_text)
+            except Exception as e:
+                last_error = e
+                err_str = str(e)
+                if "503" in err_str or "UNAVAILABLE" in err_str:
+                    time.sleep(2)
+                    continue
+                else:
+                    break
 
     raise last_error
 
