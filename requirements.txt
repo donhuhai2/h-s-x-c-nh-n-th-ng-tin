@@ -2,6 +2,8 @@ streamlit
 pandas
 openpyxl
 docxtpl
+Pillow
 google-genai
-pillow
 supabase
+werkzeug
+psycopg2-binary
