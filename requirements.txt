@@ -4,3 +4,4 @@ openpyxl
 docxtpl
 google-genai
 pillow
+supabase
